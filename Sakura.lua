@@ -20,6 +20,8 @@ local CollectEnemyPlayers = nil
 local LastEnemyKey = ""
 local InstallWalkSpeedBypass = nil
 local UpdateWeaponHighlight = nil
+local ApplyHandsPosition = nil
+local GetEquippedWeapon = nil
 local MovementDebugLabel = nil
 local MoveDebugText = "..."
 local ApplyAirStuck = nil
@@ -30,6 +32,22 @@ local ApplyModelChanger = nil
 local RestoreOriginalModel = nil
 local PushKillFeed = nil
 local PushKillFeedIfDead = nil
+local CameraPitchLock = false
+local ESPColorMap = {
+    Pink = Color3.fromRGB(255, 105, 180),
+    Lime = Color3.fromRGB(180, 230, 30),
+    Cyan = Color3.fromRGB(55, 177, 218),
+    Purple = Color3.fromRGB(204, 72, 180),
+    Orange = Color3.fromRGB(255, 150, 50),
+    White = Color3.fromRGB(255, 255, 255),
+    Red = Color3.fromRGB(220, 60, 60),
+    Green = Color3.fromRGB(60, 220, 90),
+    Blue = Color3.fromRGB(60, 120, 255),
+    Yellow = Color3.fromRGB(255, 220, 60)
+}
+
+local ESPColorNames = {"Pink", "Lime", "Cyan", "Purple", "Orange", "White", "Red", "Green", "Blue", "Yellow"}
+
 local Icons = {
     Sakura = "rbxassetid://79478214327919",
     Sparkles = "rbxassetid://105634041692696",
@@ -67,21 +85,31 @@ local State = {
         Nickname = false,
         Chams = false,
         SelfChams = false,
-        TeamCheck = true
+        TeamCheck = true,
+        BoxColor = Color3.fromRGB(255, 105, 180),
+        ChamsColor = Color3.fromRGB(255, 90, 175),
+        CharmPlayers = false,
+        CharmColor = Color3.fromRGB(55, 177, 218),
+        CharmTransparency = 0.4,
+        CharmDistance = 50,
+        Arrows = false,
+        ArrowColor = Color3.fromRGB(255, 255, 255),
+        PlayerColors = {}
     },
     AntiAim = {
         Enabled = false,
         Mode = "jitter",
         SpinSpeed = 720,
         JitterAngle = 65,
-        PitchMode = "None",
-        PitchAngle = 89
+        PitchAngle = 89,
+        CameraPitch = true
     },
     Ragebot = {
         Enabled = false,
         TeamCheck = true,
         WallCheck = true,
         ShootWall = false,
+        AutoWall = false,
         ShootWallLimit = 16,
         Hitbox = "Head",
         FireDelay = 0.04
@@ -93,6 +121,7 @@ local State = {
         TeamCheck = true,
         WallCheck = true,
         ShootWall = false,
+        AutoWall = false,
         ShootWallLimit = 16,
         Hitbox = "Head"
     },
@@ -106,6 +135,13 @@ local State = {
         WeaponGlow = false,
         WeaponGlowFill = Color3.fromRGB(255, 105, 180),
         WeaponGlowOutline = Color3.fromRGB(180, 230, 30),
+        WeaponChamsMode = "Highlight",
+        WeaponGlassTransparency = 0.4,
+        WeaponMetalReflectance = 1.0,
+        HandsEnabled = false,
+        HandsX = 0.2,
+        HandsY = -0.155,
+        HandsZ = 0.075,
         HitSound = false,
         HitSoundPreset = "Skeet",
         HitSoundVolume = 2.0
@@ -126,11 +162,13 @@ local State = {
     },
     Misc = {
         BunnyHop = false,
-        BhopSpeed = 26,
+        BhopSpeed = 18,
+        BhopStrafe = false,
+        BhopStrafeRate = 14,
         JumpPower = 58,
         SpeedHack = false,
         SpeedValue = 34,
-        SpeedBypass = true,
+        SpeedBypass = false,
         SpeedInstant = true,
         ThirdPerson = false,
         ThirdPersonDist = 12,
@@ -138,6 +176,14 @@ local State = {
         AntiFlash = false,
         AntiSmoke = false,
         AirStuck = false,
+        FogEnabled = false,
+        FogStart = 20,
+        FogEnd = 420,
+        FogColor = Color3.fromRGB(196, 206, 218),
+        SkyEnabled = false,
+        Skybox = "Default",
+        SkyColor = Color3.fromRGB(255, 255, 255),
+        SkyBrightness = 1.5,
         ModelChanger = false,
         ModelTarget = "Reset"
     },
@@ -150,6 +196,233 @@ local State = {
         LimitReached = false
     }
 }
+
+local World = (function()
+    local Packs = {
+        Default = {
+            "rbxasset://textures/sky/sky512_bk.tex",
+            "rbxasset://textures/sky/sky512_dn.tex",
+            "rbxasset://textures/sky/sky512_ft.tex",
+            "rbxasset://textures/sky/sky512_lf.tex",
+            "rbxasset://textures/sky/sky512_rt.tex",
+            "rbxasset://textures/sky/sky512_up.tex"
+        },
+        Storm = {
+            "rbxassetid://10258337305",
+            "rbxassetid://10258337305",
+            "rbxassetid://10258337305",
+            "rbxassetid://10258337305",
+            "rbxassetid://10258337305",
+            "rbxassetid://10258337305"
+        },
+        Flat = {
+            "rbxassetid://10799413050",
+            "rbxassetid://10799413050",
+            "rbxassetid://10799413050",
+            "rbxassetid://10799413050",
+            "rbxassetid://10799413050",
+            "rbxassetid://10799413050"
+        },
+        Azure = {
+            "rbxassetid://225469345",
+            "rbxassetid://225469349",
+            "rbxassetid://225469359",
+            "rbxassetid://225469364",
+            "rbxassetid://225469372",
+            "rbxassetid://225469380"
+        },
+        Void = {"", "", "", "", "", ""}
+    }
+
+    local Names = {"Default", "Storm", "Flat", "Azure", "Void"}
+    local Faces = {"SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp"}
+
+    local OrigFog = nil
+    local OrigLighting = nil
+    local OrigSky = nil
+
+    local function SaveFogOrig()
+        if OrigFog then
+            return
+        end
+        pcall(function()
+            OrigFog = {
+                Start = Lighting.FogStart,
+                End = Lighting.FogEnd,
+                Color = Lighting.FogColor
+            }
+        end)
+    end
+
+    local function SaveLightingOrig()
+        if OrigLighting then
+            return
+        end
+        pcall(function()
+            OrigLighting = {
+                Ambient = Lighting.Ambient,
+                OutdoorAmbient = Lighting.OutdoorAmbient,
+                Brightness = Lighting.Brightness,
+                ColorShiftTop = Lighting.ColorShift_Top,
+                ColorShiftBottom = Lighting.ColorShift_Bottom,
+                GlobalShadows = Lighting.GlobalShadows
+            }
+        end)
+    end
+
+    local function SaveSkyOrig()
+        if OrigSky then
+            return
+        end
+        local sky = Lighting:FindFirstChildOfClass("Sky")
+        if not sky then
+            OrigSky = {}
+            return
+        end
+        local saved = {}
+        for _, face in ipairs(Faces) do
+            pcall(function()
+                saved[face] = sky[face]
+            end)
+        end
+        OrigSky = saved
+    end
+
+    local function RestoreLighting()
+        if not Lighting or not OrigLighting then
+            return
+        end
+        pcall(function()
+            Lighting.Ambient = OrigLighting.Ambient
+            Lighting.OutdoorAmbient = OrigLighting.OutdoorAmbient
+            Lighting.Brightness = OrigLighting.Brightness
+            Lighting.ColorShift_Top = OrigLighting.ColorShiftTop
+            Lighting.ColorShift_Bottom = OrigLighting.ColorShiftBottom
+            Lighting.GlobalShadows = OrigLighting.GlobalShadows
+        end)
+    end
+
+    local function GetSkyObject()
+        local sky = Lighting:FindFirstChildOfClass("Sky")
+        if not sky then
+            sky = Instance.new("Sky")
+            sky.Parent = Lighting
+        end
+        return sky
+    end
+
+    local function ApplyFog()
+        if not Lighting then
+            return
+        end
+        SaveFogOrig()
+        pcall(function()
+            if State.Misc.FogEnabled then
+                Lighting.FogStart = State.Misc.FogStart
+                Lighting.FogEnd = State.Misc.FogEnd
+                Lighting.FogColor = State.Misc.FogColor
+            elseif OrigFog then
+                Lighting.FogStart = OrigFog.Start
+                Lighting.FogEnd = OrigFog.End
+                Lighting.FogColor = OrigFog.Color
+            end
+        end)
+    end
+
+    local function ApplySky()
+        if not Lighting then
+            return
+        end
+        SaveLightingOrig()
+        SaveSkyOrig()
+
+        if not State.Misc.SkyEnabled then
+            RestoreLighting()
+            pcall(function()
+                local sky = Lighting:FindFirstChildOfClass("Sky")
+                if sky and OrigSky then
+                    for _, face in ipairs(Faces) do
+                        if OrigSky[face] ~= nil then
+                            sky[face] = OrigSky[face]
+                        end
+                    end
+                    sky.Parent = Lighting
+                end
+            end)
+            return
+        end
+
+        local sky = GetSkyObject()
+        local pack = Packs[State.Misc.Skybox] or Packs.Default
+        for i, face in ipairs(Faces) do
+            pcall(function()
+                sky[face] = pack[i]
+            end)
+        end
+        pcall(function()
+            sky.CelestialBodiesShown = (State.Misc.Skybox == "Default")
+        end)
+
+        local col = State.Misc.SkyColor
+        SaveLightingOrig()
+        pcall(function()
+            Lighting.Ambient = col
+            Lighting.OutdoorAmbient = col
+            Lighting.ColorShift_Top = col
+            Lighting.ColorShift_Bottom = col
+            Lighting.Brightness = State.Misc.SkyBrightness
+        end)
+
+        local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
+        if not atmo then
+            atmo = Instance.new("Atmosphere")
+            atmo.Parent = Lighting
+        end
+        pcall(function()
+            atmo.Color = col
+            atmo.Decay = col
+            atmo.Density = 0.42
+            atmo.Glare = 0
+            atmo.Haze = 2.4
+            atmo.Offset = 0
+            atmo.Height = 200
+        end)
+
+        pcall(function()
+            local holder = sky.Parent
+            sky.Parent = nil
+            sky.Parent = holder or Lighting
+        end)
+    end
+
+    local function Reset()
+        State.Misc.FogEnabled = false
+        State.Misc.SkyEnabled = false
+        ApplyFog()
+        ApplySky()
+    end
+
+    task.spawn(function()
+        while true do
+            task.wait(1)
+            if State.Misc.FogEnabled then
+                pcall(ApplyFog)
+            end
+            if State.Misc.SkyEnabled then
+                pcall(ApplySky)
+            end
+        end
+    end)
+
+    return {
+        Names = Names,
+        Packs = Packs,
+        Faces = Faces,
+        ApplyFog = ApplyFog,
+        ApplySky = ApplySky,
+        Reset = Reset
+    }
+end)()
 
 pcall(function()
     RunService:UnbindFromRenderStep("SakuraAntiAimStep")
@@ -257,7 +530,7 @@ PushKillFeedIfDead = function(charModel, throughWall)
         pcall(function()
             if hum and hum.Parent and startHealth > 0 and hum.Health <= 0 then
                 if throughWall then
-                    PushKillFeed(charModel.Name .. "   [THROUGH WALL]", Color3.fromRGB(180, 230, 30))
+                    PushKillFeed(charModel.Name .. "   [WALLBANG]", Color3.fromRGB(255, 190, 60))
                 else
                     PushKillFeed(charModel.Name .. "   [KILLED]", Color3.fromRGB(255, 105, 180))
                 end
@@ -961,13 +1234,16 @@ AddSectionTitle(TabRage.Right, "RAGEBOT SETTINGS", Icons.Target, 1)
 AddSelector(TabRage.Right, "Target Hitbox", {"Head", "UpperTorso", "HumanoidRootPart"}, State.Ragebot.Hitbox, 2, function(v)
     State.Ragebot.Hitbox = v
 end)
-AddToggle(TabRage.Right, "Shoot Wall", State.Ragebot.ShootWall, 3, function(v)
+AddToggle(TabRage.Right, "Auto Wall", State.Ragebot.AutoWall, 3, function(v)
+    State.Ragebot.AutoWall = v
+end)
+AddToggle(TabRage.Right, "Shoot Wall", State.Ragebot.ShootWall, 4, function(v)
     State.Ragebot.ShootWall = v
 end)
-AddSlider(TabRage.Right, "Shoot Wall Thickness", 2, 100, State.Ragebot.ShootWallLimit, 0, 4, function(v)
+AddSlider(TabRage.Right, "Shoot Wall Thickness", 2, 100, State.Ragebot.ShootWallLimit, 0, 5, function(v)
     State.Ragebot.ShootWallLimit = v
 end)
-AddSlider(TabRage.Right, "Fire Delay", 0.01, 0.25, State.Ragebot.FireDelay, 2, 5, function(v)
+AddSlider(TabRage.Right, "Fire Delay", 0.01, 0.25, State.Ragebot.FireDelay, 2, 6, function(v)
     State.Ragebot.FireDelay = v
 end)
 
@@ -992,10 +1268,13 @@ end)
 AddSelector(TabSilent.Right, "Silent Hitbox", {"Head", "UpperTorso", "HumanoidRootPart"}, State.SilentAim.Hitbox, 4, function(v)
     State.SilentAim.Hitbox = v
 end)
-AddToggle(TabSilent.Right, "Shoot Wall", State.SilentAim.ShootWall, 5, function(v)
+AddToggle(TabSilent.Right, "Auto Wall", State.SilentAim.AutoWall, 5, function(v)
+    State.SilentAim.AutoWall = v
+end)
+AddToggle(TabSilent.Right, "Shoot Wall", State.SilentAim.ShootWall, 6, function(v)
     State.SilentAim.ShootWall = v
 end)
-AddSlider(TabSilent.Right, "Shoot Wall Thickness", 2, 100, State.SilentAim.ShootWallLimit, 0, 6, function(v)
+AddSlider(TabSilent.Right, "Shoot Wall Thickness", 2, 100, State.SilentAim.ShootWallLimit, 0, 7, function(v)
     State.SilentAim.ShootWallLimit = v
 end)
 
@@ -1012,10 +1291,25 @@ AddToggle(TabAntiAim.Left, "AntiAim Enabled", State.AntiAim.Enabled, 2, function
         end
     end
 end)
-AddSelector(TabAntiAim.Left, "AntiAim Mode", {"jitter", "spin", "backwares", "jitter-backwares", "goodluck"}, State.AntiAim.Mode, 3, function(v)
+AddSelector(TabAntiAim.Left, "AntiAim Mode", {
+    "jitter",
+    "spin",
+    "backwares",
+    "jitter-backwares",
+    "goodluck",
+    "backwares-jitter-down",
+    "backwares-jitter-up",
+    "backwares-down",
+    "backwares-up",
+    "jitter-down",
+    "jitter-up",
+    "down-up",
+    "spin-down"
+}, State.AntiAim.Mode, 3, function(v)
     State.AntiAim.Mode = v
 end)
 AddInfoLabel(TabAntiAim.Left, "goodluck: left=-90 right=90 fwd=180 back=0", 4)
+AddInfoLabel(TabAntiAim.Left, "down/up modes use Pitch Angle", 5)
 
 AddSectionTitle(TabAntiAim.Right, "ANTIAIM VALUES", Icons.Settings, 1)
 AddSlider(TabAntiAim.Right, "Spin Speed", 180, 2160, State.AntiAim.SpinSpeed, 0, 2, function(v)
@@ -1024,12 +1318,13 @@ end)
 AddSlider(TabAntiAim.Right, "Jitter Angle", 15, 135, State.AntiAim.JitterAngle, 0, 3, function(v)
     State.AntiAim.JitterAngle = v
 end)
-AddSelector(TabAntiAim.Right, "Pitch Mode", {"None", "Down", "Up", "Jitter", "Auto"}, State.AntiAim.PitchMode, 4, function(v)
-    State.AntiAim.PitchMode = v
-end)
-AddSlider(TabAntiAim.Right, "Pitch Angle", 10, 89, State.AntiAim.PitchAngle, 0, 5, function(v)
+AddSlider(TabAntiAim.Right, "Pitch Angle", 10, 89, State.AntiAim.PitchAngle, 0, 4, function(v)
     State.AntiAim.PitchAngle = v
 end)
+AddToggle(TabAntiAim.Right, "Camera Pitch", State.AntiAim.CameraPitch, 8, function(v)
+    State.AntiAim.CameraPitch = v
+end)
+AddInfoLabel(TabAntiAim.Right, "pitch: body via PostSimulation", 9)
 MovementDebugLabel = AddInfoLabel(TabAntiAim.Right, "status: ...", 6)
 
 AddSectionTitle(TabWeapons.Left, "WEAPON MODS", Icons.Wrench, 1)
@@ -1098,6 +1393,45 @@ AddSelector(TabWeapons.Right, "Glow Outline Color", {"Lime", "Pink", "Cyan", "Pu
     State.Weapons.WeaponGlowOutline = map[v] or map.Lime
     UpdateWeaponHighlight()
 end)
+AddSelector(TabWeapons.Right, "Glow Mode", {"Highlight", "Glass", "ForceField", "Metal", "Neon"}, "Highlight", 11, function(v)
+    State.Weapons.WeaponChamsMode = v
+    UpdateWeaponHighlight()
+end)
+AddSlider(TabWeapons.Right, "Glass Transparency", 0, 1, State.Weapons.WeaponGlassTransparency, 2, 12, function(v)
+    State.Weapons.WeaponGlassTransparency = v
+    UpdateWeaponHighlight()
+end)
+AddSlider(TabWeapons.Right, "Metal Reflectance", 0, 1, State.Weapons.WeaponMetalReflectance, 2, 13, function(v)
+    State.Weapons.WeaponMetalReflectance = v
+    UpdateWeaponHighlight()
+end)
+
+AddSectionTitle(TabWeapons.Right, "CUSTOM HANDS POSITION", Icons.Wrench, 14)
+AddToggle(TabWeapons.Right, "Custom Hands", State.Weapons.HandsEnabled, 15, function(v)
+    State.Weapons.HandsEnabled = v
+    if v then
+        ApplyHandsPosition()
+    end
+end)
+AddSlider(TabWeapons.Right, "Hands X", -1, 1, State.Weapons.HandsX, 3, 16, function(v)
+    State.Weapons.HandsX = v
+    if State.Weapons.HandsEnabled then
+        ApplyHandsPosition()
+    end
+end)
+AddSlider(TabWeapons.Right, "Hands Y", -1, 1, State.Weapons.HandsY, 3, 17, function(v)
+    State.Weapons.HandsY = v
+    if State.Weapons.HandsEnabled then
+        ApplyHandsPosition()
+    end
+end)
+AddSlider(TabWeapons.Right, "Hands Z", -1, 1, State.Weapons.HandsZ, 3, 18, function(v)
+    State.Weapons.HandsZ = v
+    if State.Weapons.HandsEnabled then
+        ApplyHandsPosition()
+    end
+end)
+AddInfoLabel(TabWeapons.Right, "writes Stats.Default in camera vm", 19)
 
 AddSectionTitle(TabESP.Left, "PLAYER ESP", Icons.Eye, 1)
 AddToggle(TabESP.Left, "ESP Master", State.ESP.Enabled, 2, function(v)
@@ -1126,6 +1460,141 @@ end)
 AddToggle(TabESP.Right, "Team Check", State.ESP.TeamCheck, 4, function(v)
     State.ESP.TeamCheck = v
 end)
+
+AddSectionTitle(TabESP.Right, "WEAPON CHARMS", Icons.Sparkles, 5)
+AddToggle(TabESP.Right, "Weapon Charms", State.Weapons.WeaponGlow, 6, function(v)
+    State.Weapons.WeaponGlow = v
+    UpdateWeaponHighlight()
+end)
+AddSelector(TabESP.Right, "Charms Mode", {"Highlight", "Glass", "ForceField", "Metal", "Neon"}, "Highlight", 7, function(v)
+    State.Weapons.WeaponChamsMode = v
+    UpdateWeaponHighlight()
+end)
+AddSelector(TabESP.Right, "Charms Color", {"Pink", "Lime", "Cyan", "Purple", "Orange", "White"}, "Pink", 8, function(v)
+    local map = {
+        Pink = Color3.fromRGB(255, 105, 180),
+        Lime = Color3.fromRGB(180, 230, 30),
+        Cyan = Color3.fromRGB(55, 177, 218),
+        Purple = Color3.fromRGB(204, 72, 180),
+        Orange = Color3.fromRGB(255, 150, 50),
+        White = Color3.fromRGB(255, 255, 255)
+    }
+    State.Weapons.WeaponGlowFill = map[v] or map.Pink
+    UpdateWeaponHighlight()
+end)
+AddSelector(TabESP.Right, "Charms Outline", {"Lime", "Pink", "Cyan", "Purple", "Orange", "White"}, "Lime", 9, function(v)
+    local map = {
+        Pink = Color3.fromRGB(255, 105, 180),
+        Lime = Color3.fromRGB(180, 230, 30),
+        Cyan = Color3.fromRGB(55, 177, 218),
+        Purple = Color3.fromRGB(204, 72, 180),
+        Orange = Color3.fromRGB(255, 150, 50),
+        White = Color3.fromRGB(255, 255, 255)
+    }
+    State.Weapons.WeaponGlowOutline = map[v] or map.Lime
+    UpdateWeaponHighlight()
+end)
+AddSlider(TabESP.Right, "Glass Transparency", 0, 1, State.Weapons.WeaponGlassTransparency, 2, 10, function(v)
+    State.Weapons.WeaponGlassTransparency = v
+    UpdateWeaponHighlight()
+end)
+AddSlider(TabESP.Right, "Metal Reflectance", 0, 1, State.Weapons.WeaponMetalReflectance, 2, 11, function(v)
+    State.Weapons.WeaponMetalReflectance = v
+    UpdateWeaponHighlight()
+end)
+
+local ESPColorRows = {}
+local LastESPColorKey = ""
+
+local function BuildESPColorRows()
+    for _, row in pairs(ESPColorRows) do
+        if row and row.Parent then
+            row:Destroy()
+        end
+    end
+    ESPColorRows = {}
+    local names = CollectEnemyPlayers()
+    for i, name in ipairs(names) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 20)
+        btn.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+        btn.Font = Enum.Font.Code
+        btn.TextSize = 11
+        btn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        btn.Text = "  " .. name .. ": Pink"
+        btn.AutoButtonColor = false
+        btn.LayoutOrder = 200 + i
+        btn.ZIndex = 26
+        btn.Parent = TabESP.Right
+        ApplySkeetBorder(btn)
+        btn.MouseButton1Click:Connect(function()
+            local cur = State.ESP.PlayerColors[name]
+            local curName = "Pink"
+            for n, c in pairs(ESPColorMap) do
+                if c == cur then
+                    curName = n
+                    break
+                end
+            end
+            local idx = table.find(ESPColorNames, curName) or 1
+            local nextName = ESPColorNames[(idx % #ESPColorNames) + 1]
+            State.ESP.PlayerColors[name] = ESPColorMap[nextName]
+            btn.Text = "  " .. name .. ": " .. nextName
+        end)
+        ESPColorRows[name] = btn
+    end
+end
+
+task.defer(function()
+    pcall(BuildESPColorRows)
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        pcall(function()
+            local names = CollectEnemyPlayers()
+            local key = table.concat(names, ",")
+            if key ~= LastESPColorKey then
+                LastESPColorKey = key
+                BuildESPColorRows()
+            end
+        end)
+    end
+end)
+
+AddSectionTitle(TabESP.Right, "CHARM PLAYERS", Icons.Shield, 12)
+AddToggle(TabESP.Right, "Charm Players", State.ESP.CharmPlayers, 13, function(v)
+    State.ESP.CharmPlayers = v
+end)
+AddSelector(TabESP.Right, "Charm Color", ESPColorNames, "Cyan", 14, function(v)
+    State.ESP.CharmColor = ESPColorMap[v] or ESPColorMap.Cyan
+end)
+AddSlider(TabESP.Right, "Charm Transparency", 0, 1, State.ESP.CharmTransparency, 2, 15, function(v)
+    State.ESP.CharmTransparency = v
+end)
+AddSlider(TabESP.Right, "Charm Distance", 10, 500, State.ESP.CharmDistance, 0, 16, function(v)
+    State.ESP.CharmDistance = v
+end)
+AddInfoLabel(TabESP.Right, "forcefield material on model", 17)
+
+AddSectionTitle(TabESP.Right, "OFFSCREEN ARROWS", Icons.Target, 18)
+AddToggle(TabESP.Right, "Offscreen Arrows", State.ESP.Arrows, 19, function(v)
+    State.ESP.Arrows = v
+end)
+AddSelector(TabESP.Right, "Arrow Color", ESPColorNames, "White", 20, function(v)
+    State.ESP.ArrowColor = ESPColorMap[v] or ESPColorMap.White
+end)
+AddInfoLabel(TabESP.Right, "arrow points to offscreen enemy", 21)
+
+AddSectionTitle(TabESP.Right, "ESP COLORS", Icons.Palette, 22)
+AddSelector(TabESP.Right, "ESP Box Color", ESPColorNames, "Pink", 23, function(v)
+    State.ESP.BoxColor = ESPColorMap[v] or ESPColorMap.Pink
+end)
+AddSelector(TabESP.Right, "Chams Color", ESPColorNames, "Pink", 24, function(v)
+    State.ESP.ChamsColor = ESPColorMap[v] or ESPColorMap.Pink
+end)
+AddInfoLabel(TabESP.Right, "per player colors below", 25)
 
 local KnifeModelsList = {"Karambit", "Butterfly Knife", "M9 Bayonet", "Skeleton Knife", "Stiletto Knife", "Flip Knife", "Gut Knife"}
 local GloveModelsList = {"Sports Gloves", "Driver Gloves", "Operator Gloves", "Hand Wraps"}
@@ -1156,10 +1625,16 @@ AddSectionTitle(TabMisc.Left, "MOVEMENT & WORLD", Icons.Activity, 1)
 AddToggle(TabMisc.Left, "BunnyHop", State.Misc.BunnyHop, 2, function(v)
     State.Misc.BunnyHop = v
 end)
-AddSlider(TabMisc.Left, "Bhop Speed", 14, 30, State.Misc.BhopSpeed, 0, 3, function(v)
+AddSlider(TabMisc.Left, "Bhop Speed", 5, 30, State.Misc.BhopSpeed, 0, 3, function(v)
     State.Misc.BhopSpeed = v
 end)
-AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 6, function(v)
+AddToggle(TabMisc.Left, "Auto Strafe", State.Misc.BhopStrafe, 4, function(v)
+    State.Misc.BhopStrafe = v
+end)
+AddSlider(TabMisc.Left, "Strafe Rate", 1, 60, State.Misc.BhopStrafeRate, 0, 5, function(v)
+    State.Misc.BhopStrafeRate = v
+end)
+AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 7, function(v)
     State.Misc.SpeedHack = v
     if not v then
         pcall(function()
@@ -1171,19 +1646,20 @@ AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 6, function(v)
         end)
     end
 end)
-AddSlider(TabMisc.Left, "Speed Value", 16, 120, State.Misc.SpeedValue, 0, 7, function(v)
+AddSlider(TabMisc.Left, "Speed Value", 16, 120, State.Misc.SpeedValue, 0, 8, function(v)
     State.Misc.SpeedValue = v
 end)
-AddToggle(TabMisc.Left, "Instant Accel", State.Misc.SpeedInstant, 8, function(v)
+AddToggle(TabMisc.Left, "Instant Accel", State.Misc.SpeedInstant, 9, function(v)
     State.Misc.SpeedInstant = v
 end)
-AddToggle(TabMisc.Left, "Speed Bypass (Hide WS)", State.Misc.SpeedBypass, 9, function(v)
+AddToggle(TabMisc.Left, "Speed Bypass (Hide WS)", State.Misc.SpeedBypass, 10, function(v)
     State.Misc.SpeedBypass = v
     if v then
         InstallWalkSpeedBypass()
     end
 end)
-AddSlider(TabMisc.Left, "Jump Power", 30, 130, State.Misc.JumpPower, 0, 10, function(v)
+AddInfoLabel(TabMisc.Left, "off by default: metatable hook", 11)
+AddSlider(TabMisc.Left, "Jump Power", 30, 130, State.Misc.JumpPower, 0, 12, function(v)
     State.Misc.JumpPower = v
 end)
 AddSectionTitle(TabMisc.Left, "AIR STUCK", Icons.Sparkles, 1)
@@ -1271,6 +1747,45 @@ AddSlider(TabMisc.Right, "Third Person Dist", 5, 40, State.Misc.ThirdPersonDist,
     if State.Misc.ThirdPerson and ApplyThirdPerson then
         ApplyThirdPerson()
     end
+end)
+
+AddSectionTitle(TabMisc.Right, "FOG", Icons.Volume, 6)
+AddToggle(TabMisc.Right, "Fog", State.Misc.FogEnabled, 7, function(v)
+    State.Misc.FogEnabled = v
+    World.ApplyFog()
+end)
+AddSlider(TabMisc.Right, "Fog Start", 0, 2000, State.Misc.FogStart, 0, 8, function(v)
+    State.Misc.FogStart = v
+    World.ApplyFog()
+end)
+AddSlider(TabMisc.Right, "Fog End", 0, 5000, State.Misc.FogEnd, 0, 9, function(v)
+    State.Misc.FogEnd = v
+    World.ApplyFog()
+end)
+AddSelector(TabMisc.Right, "Fog Color", ESPColorNames, "White", 10, function(v)
+    State.Misc.FogColor = ESPColorMap[v] or ESPColorMap.White
+    World.ApplyFog()
+end)
+
+AddSectionTitle(TabMisc.Right, "CHANGE SKY", Icons.Palette, 11)
+AddToggle(TabMisc.Right, "Change Sky", State.Misc.SkyEnabled, 12, function(v)
+    State.Misc.SkyEnabled = v
+    World.ApplySky()
+end)
+AddSelector(TabMisc.Right, "Skybox", World.Names, State.Misc.Skybox, 13, function(v)
+    State.Misc.Skybox = v
+    World.ApplySky()
+end)
+AddSelector(TabMisc.Right, "Sky Color", ESPColorNames, "White", 14, function(v)
+    State.Misc.SkyColor = ESPColorMap[v] or ESPColorMap.White
+    World.ApplySky()
+end)
+AddSlider(TabMisc.Right, "Sky Brightness", 0, 5, State.Misc.SkyBrightness, 2, 15, function(v)
+    State.Misc.SkyBrightness = v
+    World.ApplySky()
+end)
+AddButton(TabMisc.Right, "RESET SKY AND FOG", 16, function()
+    World.Reset()
 end)
 
 local KillTargetInfoLabel = nil
@@ -1671,6 +2186,26 @@ KillTargetAllows = function(char)
 end
 
 local PrevRoundAlive = nil
+local function IsCharacterAlive(char)
+    if not char or not char.Parent then
+        return false
+    end
+    if char:GetAttribute("Dead") == true or char:GetAttribute("Invincible") == true then
+        return false
+    end
+    local hpAttr = char:GetAttribute("Health")
+    if hpAttr ~= nil and hpAttr <= 0 then
+        return false
+    end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum.Health <= 0 then
+        return false
+    end
+    return (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")) ~= nil
+end
+
+local CachedCharacterList = {}
+
 local PrevRoundAttr = nil
 
 local function CheckNewRound()
@@ -1723,26 +2258,6 @@ task.spawn(function()
         end)
     end
 end)
-
-local function IsCharacterAlive(char)
-    if not char or not char.Parent then
-        return false
-    end
-    if char:GetAttribute("Dead") == true or char:GetAttribute("Invincible") == true then
-        return false
-    end
-    local hpAttr = char:GetAttribute("Health")
-    if hpAttr ~= nil and hpAttr <= 0 then
-        return false
-    end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum and hum.Health <= 0 then
-        return false
-    end
-    return (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")) ~= nil
-end
-
-local CachedCharacterList = {}
 
 local WallCheckCache = {}
 
@@ -1931,21 +2446,112 @@ local function UpdateSelfChams()
     end
 end
 
-local WeaponHighlights = {}
-for i = 1, 6 do
-    local hl = Instance.new("Highlight")
-    hl.Name = "SakuraWeaponHighlight" .. tostring(i)
-    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-    hl.FillColor = Color3.fromRGB(255, 105, 180)
-    hl.OutlineColor = Color3.fromRGB(180, 230, 30)
-    hl.FillTransparency = 0.25
-    hl.OutlineTransparency = 0.0
-    hl.Enabled = false
-    hl.Parent = ChamsFolder
-    table.insert(WeaponHighlights, hl)
+local function GetPlayerColor(char)
+    local plr = Players:GetPlayerFromCharacter(char)
+    local name = plr and plr.Name or (char and char.Name)
+    if name and State.ESP.PlayerColors[name] then
+        return State.ESP.PlayerColors[name]
+    end
+    return State.ESP.BoxColor
 end
 
-local LastWeaponModels = {}
+local CharmPlayersBackup = {}
+
+local function RestoreCharmPlayers(char)
+    local backup = CharmPlayersBackup[char]
+    if not backup then
+        return
+    end
+    for part, d in pairs(backup) do
+        if part and part.Parent then
+            pcall(function()
+                part.Material = d.M
+                part.Transparency = d.T
+                part.Color = d.C
+                part.Reflectance = d.R
+            end)
+        end
+    end
+    CharmPlayersBackup[char] = nil
+end
+
+local function ApplyCharmPlayers(char)
+    if CharmPlayersBackup[char] then
+        return
+    end
+    local parts = {}
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then
+            table.insert(parts, part)
+        end
+    end
+    local backup = {}
+    for _, part in ipairs(parts) do
+        backup[part] = {
+            M = part.Material,
+            T = part.Transparency,
+            C = part.Color,
+            R = part.Reflectance
+        }
+    end
+    CharmPlayersBackup[char] = backup
+    for _, part in ipairs(parts) do
+        pcall(function()
+            part.Material = Enum.Material.ForceField
+            part.Color = State.ESP.CharmColor
+            part.Transparency = State.ESP.CharmTransparency
+            part.Reflectance = 0
+        end)
+    end
+end
+
+local function UpdateCharmPlayers()
+    if not State.ESP.CharmPlayers or not State.ESP.Enabled then
+        for char, _ in pairs(CharmPlayersBackup) do
+            RestoreCharmPlayers(char)
+        end
+        return
+    end
+    local myChar = GetLocalCharacter()
+    for _, char in ipairs(CachedCharacterList) do
+        if IsCharacterAlive(char) and char ~= myChar then
+            local teammate = State.ESP.TeamCheck and IsTeammate(char)
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+                or char:FindFirstChild("Torso")
+                or char:FindFirstChild("UpperTorso")
+            local dist = math.huge
+            if hrp and Camera then
+                dist = (hrp.Position - Camera.CFrame.Position).Magnitude
+            end
+            if not teammate and dist <= State.ESP.CharmDistance then
+                ApplyCharmPlayers(char)
+            else
+                RestoreCharmPlayers(char)
+            end
+        else
+            RestoreCharmPlayers(char)
+        end
+    end
+    for char, _ in pairs(CharmPlayersBackup) do
+        if not char or not char.Parent then
+            RestoreCharmPlayers(char)
+        end
+    end
+end
+
+local WeaponChamsPool = {}
+
+local function ClearWeaponChams()
+    for _, h in ipairs(WeaponChamsPool) do
+        if h and h.Parent then
+            pcall(function()
+                h:Destroy()
+            end)
+        end
+    end
+    WeaponChamsPool = {}
+end
+
 
 local function IsWeaponModelName(n)
     local low = n:lower()
@@ -1994,8 +2600,10 @@ local function GetHeldWeaponModels()
     end
 
     if Camera then
-        for _, child in ipairs(Camera:GetChildren()) do
+        for _, child in ipairs(Camera:GetDescendants()) do
             if child:IsA("Model") and IsWeaponModelName(child.Name) then
+                add(child)
+            elseif child:IsA("BasePart") and child.Parent == Camera and IsWeaponModelName(child.Name) then
                 add(child)
             end
         end
@@ -2014,28 +2622,146 @@ local function GetHeldWeaponModels()
 end
 
 UpdateWeaponHighlight = function()
-    for _, hl in ipairs(WeaponHighlights) do
-        hl.Enabled = false
-        hl.Adornee = nil
-    end
+    ClearWeaponChams()
 
     if not State.Weapons.WeaponGlow then
-        LastWeaponModels = {}
         return
     end
 
     local models = GetHeldWeaponModels()
-    for i, hl in ipairs(WeaponHighlights) do
-        local m = models[i]
-        if m and m.Parent then
-            hl.Adornee = m
-            hl.FillColor = State.Weapons.WeaponGlowFill
-            hl.OutlineColor = State.Weapons.WeaponGlowOutline
-            hl.Enabled = true
+    if #models == 0 then
+        return
+    end
+
+    local mode = State.Weapons.WeaponChamsMode
+    local col = State.Weapons.WeaponGlowFill
+    local outline = State.Weapons.WeaponGlowOutline
+    local seen = {}
+
+    for _, model in ipairs(models) do
+        for _, part in ipairs(model:GetDescendants()) do
+            if part:IsA("BasePart") and part.Name ~= "Hitbox" and part.Name ~= "HumanoidRootPart" then
+                if part.Name ~= "ViewmodelLight"
+                    and not part:FindFirstAncestor("ViewmodelLight") then
+                    seen[part] = true
+                    pcall(function()
+                        if mode == "Highlight" then
+                            local h = part:FindFirstChild("WeaponChamsHighlight")
+                            if not h then
+                                h = Instance.new("Highlight")
+                                h.Name = "WeaponChamsHighlight"
+                                h.Adornee = part
+                                h.Parent = part
+                                h.FillTransparency = 0
+                                h.OutlineTransparency = 0
+                                h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                                table.insert(WeaponChamsPool, h)
+                            end
+                            h.FillColor = col
+                            h.OutlineColor = outline
+                            h.Enabled = true
+                        else
+                            local h = part:FindFirstChild("WeaponChamsHighlight")
+                            if h then
+                                h:Destroy()
+                            end
+
+                            if mode ~= "Neon" then
+                                for _, v in ipairs(part:GetChildren()) do
+                                    if v:IsA("SurfaceAppearance") or v:IsA("Texture") or v:IsA("Decal") then
+                                        v:Destroy()
+                                    end
+                                end
+                            end
+
+                            if mode == "Glass" then
+                                part.Material = Enum.Material.Glass
+                                part.Color = col
+                                part.Transparency = State.Weapons.WeaponGlassTransparency
+                            elseif mode == "ForceField" then
+                                part.Material = Enum.Material.ForceField
+                                part.Color = col
+                                part.Transparency = 0
+                            elseif mode == "Metal" then
+                                part.Material = Enum.Material.Metal
+                                part.Color = col
+                                part.Reflectance = State.Weapons.WeaponMetalReflectance
+                                part.Transparency = 0
+                            elseif mode == "Neon" then
+                                part.Material = Enum.Material.Neon
+                                part.Color = col
+                                part.Transparency = 0
+                                for _, v in ipairs(part:GetChildren()) do
+                                    if v:IsA("SurfaceAppearance") or v:IsA("Texture") or v:IsA("Decal") then
+                                        v:Destroy()
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                end
+            end
         end
     end
-    LastWeaponModels = models
+
+    for i = #WeaponChamsPool, 1, -1 do
+        local h = WeaponChamsPool[i]
+        if not h or not h.Parent or not seen[h.Adornee] then
+            if h then
+                pcall(function()
+                    h:Destroy()
+                end)
+            end
+            table.remove(WeaponChamsPool, i)
+        end
+    end
 end
+
+ApplyHandsPosition = function()
+    if not State.Weapons.HandsEnabled then
+        return
+    end
+    if not Camera then
+        return
+    end
+    local offset = Vector3.new(State.Weapons.HandsX, State.Weapons.HandsY, State.Weapons.HandsZ)
+    for _, child in ipairs(Camera:GetChildren()) do
+        if child:IsA("Model") then
+            local stats = child:FindFirstChild("Stats")
+            if stats then
+                local def = stats:FindFirstChild("Default")
+                if def and def:IsA("Vector3Value") then
+                    pcall(function()
+                        def.Value = offset
+                    end)
+                end
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.12)
+        if State.Weapons.HandsEnabled then
+            pcall(ApplyHandsPosition)
+        end
+    end
+end)
+
+pcall(function()
+    if Camera then
+        Camera.ChildAdded:Connect(function()
+            task.wait(0.15)
+            if State.Weapons.WeaponGlow then
+                UpdateWeaponHighlight()
+            end
+            if State.Weapons.HandsEnabled then
+                ApplyHandsPosition()
+            end
+        end)
+    end
+end)
 
 local function CreateESPObject(char)
     if ESPObjects[char] then
@@ -2084,6 +2810,34 @@ local function CreateESPObject(char)
         boneLines[i] = line
     end
 
+    local arrowHolder = Instance.new("Frame")
+    arrowHolder.Name = "SakuraArrow"
+    arrowHolder.BackgroundTransparency = 1
+    arrowHolder.Size = UDim2.new(0, 26, 0, 26)
+    arrowHolder.AnchorPoint = Vector2.new(0.5, 0.5)
+    arrowHolder.Visible = false
+    arrowHolder.ZIndex = 8
+    arrowHolder.Parent = holder
+
+    local arrowParts = {}
+    local arrowSteps = 11
+    local arrowSize = 30
+    local arrowStep = arrowSize / arrowSteps
+    for i = 0, arrowSteps - 1 do
+        local t = i / (arrowSteps - 1)
+        local seg = Instance.new("Frame")
+        seg.Name = "SakuraArrowSeg"
+        seg.BorderSizePixel = 0
+        seg.BackgroundColor3 = Color3.fromRGB(148, 148, 148)
+        seg.BackgroundTransparency = 0.08 + 0.87 * t
+        seg.Size = UDim2.new(0, math.max(2, math.floor(arrowSize * (0.12 + 0.88 * t) + 0.5)), 0, arrowStep + 1.5)
+        seg.AnchorPoint = Vector2.new(0.5, 0.5)
+        seg.Position = UDim2.new(0.5, 0, 0.5, -arrowSize * 0.5 + arrowStep * (i + 0.5))
+        seg.ZIndex = 9
+        seg.Parent = arrowHolder
+        table.insert(arrowParts, seg)
+    end
+
     local highlight = Instance.new("Highlight")
     highlight.Name = "SakuraChams"
     highlight.Adornee = char
@@ -2101,7 +2855,9 @@ local function CreateESPObject(char)
         BoxStroke = boxOutline,
         Name = nameLabel,
         BoneLines = boneLines,
-        Highlight = highlight
+        Highlight = highlight,
+        Arrow = arrowHolder,
+        ArrowParts = arrowParts
     }
     ESPObjects[char] = data
     return data
@@ -2116,7 +2872,11 @@ local function RemoveESPObject(char)
         if data.Highlight then
             data.Highlight:Destroy()
         end
+        if data.Arrow then
+            data.Arrow:Destroy()
+        end
         ESPObjects[char] = nil
+        RestoreCharmPlayers(char)
     end
     CachedHealth[char] = nil
 end
@@ -2180,6 +2940,9 @@ end
 
 local function PassesWallCheck(cfg, targetPart, charModel, cacheKey)
     local function compute()
+        if cfg.AutoWall then
+            return GetWallThickness(targetPart, charModel) <= cfg.ShootWallLimit
+        end
         if cfg.ShootWall then
             return GetWallThickness(targetPart, charModel) <= cfg.ShootWallLimit
         end
@@ -2244,7 +3007,7 @@ local function UpdateTargets()
                         local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
                         if onScreen and screenPos.Z > 0 then
                             local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                            if dist2D <= bestSilentDist then
+                            if dist2D <= bestSilentDist or State.SilentAim.AutoWall then
                                 local passWall = PassesWallCheck(State.SilentAim, part, char, "silent_" .. char.Name)
                                 if passWall then
                                     bestSilentDist = dist2D
@@ -2459,7 +3222,7 @@ task.spawn(function()
     InitialOneTimeGCScan()
 end)
 
-local function GetEquippedWeapon()
+GetEquippedWeapon = function()
     if InventoryControllerRef and InventoryControllerRef.peekCurrentEquippedForMovement then
         local ok, w = pcall(function()
             return InventoryControllerRef.peekCurrentEquippedForMovement()
@@ -2720,46 +3483,42 @@ local function IsOnGround(char, hrp)
     return hit ~= nil
 end
 
+local AntiAimModeDefs = {
+    ["jitter"] = { Yaw = "jitter", Pitch = "none" },
+    ["spin"] = { Yaw = "spin", Pitch = "none" },
+    ["backwares"] = { Yaw = "back", Pitch = "none" },
+    ["jitter-backwares"] = { Yaw = "backjitter", Pitch = "none" },
+    ["goodluck"] = { Yaw = "goodluck", Pitch = "none" },
+    ["backwares-jitter-down"] = { Yaw = "backjitter", Pitch = "down" },
+    ["backwares-jitter-up"] = { Yaw = "backjitter", Pitch = "up" },
+    ["backwares-down"] = { Yaw = "back", Pitch = "down" },
+    ["backwares-up"] = { Yaw = "back", Pitch = "up" },
+    ["jitter-down"] = { Yaw = "jitter", Pitch = "down" },
+    ["jitter-up"] = { Yaw = "jitter", Pitch = "up" },
+    ["down-up"] = { Yaw = "back", Pitch = "downup" },
+    ["spin-down"] = { Yaw = "spin", Pitch = "down" }
+}
+
+local function GetAntiAimModeDef()
+    return AntiAimModeDefs[State.AntiAim.Mode] or AntiAimModeDefs["jitter"]
+end
+
 local function GetAntiAimPitchDeg(hum, char, hrp)
-    local mode = State.AntiAim.PitchMode
-    if mode == "None" then
+    if not IsHumanoidUsable(hum) then
         return 0
     end
-    if not IsHumanoidUsable(hum) then
+    local pitchType = GetAntiAimModeDef().Pitch
+    if pitchType == "none" then
         return 0
     end
 
     local wantDown = false
-    if mode == "Down" then
+    if pitchType == "down" then
         wantDown = true
-    elseif mode == "Up" then
+    elseif pitchType == "up" then
         wantDown = false
-    elseif mode == "Jitter" then
+    elseif pitchType == "downup" then
         wantDown = JitterFlip
-    elseif mode == "Auto" then
-        local origin = nil
-        local myChar = GetLocalCharacter()
-        local myHead = myChar and myChar:FindFirstChild("Head")
-        if myHead then
-            origin = myHead.Position
-        elseif Camera then
-            origin = Camera.CFrame.Position
-        end
-        local nearest = nil
-        if origin then
-            for _, c in ipairs(CachedCharacterList) do
-                if IsCharacterAlive(c) and not IsTeammate(c) then
-                    local part = c:FindFirstChild("Head") or c:FindFirstChild("HumanoidRootPart") or c:FindFirstChild("UpperTorso")
-                    if part then
-                        local dist = (part.Position - origin).Magnitude
-                        if nearest == nil or dist < nearest then
-                            nearest = dist
-                        end
-                    end
-                end
-            end
-        end
-        wantDown = not (nearest ~= nil and nearest <= 35)
     else
         return 0
     end
@@ -2830,17 +3589,18 @@ local function ApplyAntiAimToCharacter(dt)
     local offsetDeg = 0
     JitterFlip = not JitterFlip
 
-    local mode = State.AntiAim.Mode
-    if mode == "spin" then
+    local modeDef = GetAntiAimModeDef()
+    local yawType = modeDef.Yaw
+    if yawType == "spin" then
         SpinAngle = (SpinAngle + dt * State.AntiAim.SpinSpeed) % 360
         offsetDeg = SpinAngle
-    elseif mode == "backwares" then
+    elseif yawType == "back" then
         offsetDeg = 180
-    elseif mode == "jitter" then
+    elseif yawType == "jitter" then
         offsetDeg = JitterFlip and State.AntiAim.JitterAngle or -State.AntiAim.JitterAngle
-    elseif mode == "jitter-backwares" then
+    elseif yawType == "backjitter" then
         offsetDeg = 180 + (JitterFlip and State.AntiAim.JitterAngle or -State.AntiAim.JitterAngle)
-    elseif mode == "goodluck" then
+    elseif yawType == "goodluck" then
         local md = GetMoveDirection()
         if md.Magnitude > 0.01 then
             local look = Camera.CFrame.LookVector
@@ -2873,9 +3633,85 @@ local function ApplyAntiAimToCharacter(dt)
     SetAntiAimCFrame(hrp, hum, myChar)
 end
 
+local function GetCurrentPitchDeg()
+    local myChar = GetLocalCharacter()
+    if not myChar then
+        return 0
+    end
+    local hum = myChar:FindFirstChildOfClass("Humanoid")
+    local hrp = myChar:FindFirstChild("HumanoidRootPart")
+    if not hum or not hrp then
+        return 0
+    end
+    return GetAntiAimPitchDeg(hum, myChar, hrp)
+end
+
+local function ApplyCameraPitchCFrame(cf)
+    if not cf then
+        return cf
+    end
+    local deg = GetCurrentPitchDeg()
+    if deg == 0 then
+        return cf
+    end
+    local lv = cf.LookVector
+    local flat = Vector3.new(lv.X, 0, lv.Z)
+    if flat.Magnitude < 0.001 then
+        flat = Vector3.new(0, 0, -1)
+    end
+    flat = flat.Unit
+    local yaw = math.atan2(-flat.X, -flat.Z)
+    return CFrame.new(cf.Position) * CFrame.Angles(math.rad(deg), yaw, 0)
+end
+
+local function ForceCameraPitch()
+    if not Camera or CameraPitchLock then
+        return
+    end
+    if not State.AntiAim.Enabled or not State.AntiAim.CameraPitch then
+        return
+    end
+    local newCF = ApplyCameraPitchCFrame(Camera.CFrame)
+    if not newCF or newCF == Camera.CFrame then
+        return
+    end
+    CameraPitchLock = true
+    pcall(function()
+        Camera.CFrame = newCF
+    end)
+    CameraPitchLock = false
+end
+
+pcall(function()
+    if Camera then
+        Camera:GetPropertyChangedSignal("CFrame"):Connect(function()
+            if State.AntiAim.Enabled and State.AntiAim.CameraPitch then
+                ForceCameraPitch()
+            end
+        end)
+    end
+end)
+
 pcall(function()
     RunService:BindToRenderStep("SakuraAntiAimStep", Enum.RenderPriority.Last.Value + 50, function(dt)
         ApplyAntiAimToCharacter(dt)
+        ForceCameraPitch()
+    end)
+end)
+
+pcall(function()
+    RunService.PostSimulation:Connect(function()
+        if State.AntiAim.Enabled then
+            local myChar = GetLocalCharacter()
+            if myChar then
+                local hrp = myChar:FindFirstChild("HumanoidRootPart")
+                local hum = myChar:FindFirstChildOfClass("Humanoid")
+                if hrp and hum then
+                    SetAntiAimCFrame(hrp, hum, myChar)
+                end
+            end
+            ForceCameraPitch()
+        end
     end)
 end)
 
@@ -2993,16 +3829,11 @@ local function ApplyBunnyHop()
         return
     end
 
-    local moveDir = GetMoveDirection()
     local wantsBhop = UserInputService:IsKeyDown(Enum.KeyCode.Space)
-        or (UserInputService.TouchEnabled and moveDir.Magnitude > 0.1)
+        or (UserInputService.TouchEnabled and GetMoveDirection().Magnitude > 0.1)
     if not wantsBhop then
-        LastBhopJump = 0
         return
     end
-
-    local grounded = IsCharacterGrounded(myChar, hrp, hum)
-    local now = tick()
 
     pcall(function()
         hum.Sit = false
@@ -3010,44 +3841,60 @@ local function ApplyBunnyHop()
     pcall(function()
         hum.PlatformStand = false
     end)
-    pcall(function()
-        hum.UseJumpPower = true
-        hum.JumpPower = State.Misc.JumpPower
-    end)
 
-    if grounded then
-        if now - LastBhopJump >= 0.05 then
-            LastBhopJump = now
+    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+        BhopRayParams.FilterDescendantsInstances = {myChar}
+        local groundHit = Workspace:Raycast(hrp.Position, Vector3.new(0, -4, 0), BhopRayParams)
+        if groundHit then
             pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Jumping)
-            end)
-            pcall(function()
-                hum:ChangeState(Enum.HumanoidStateType.Running)
+                hum.UseJumpPower = true
+                hum.JumpPower = State.Misc.JumpPower
             end)
             hum.Jump = true
-            local vel = hrp.AssemblyLinearVelocity
-            hrp.AssemblyLinearVelocity = Vector3.new(vel.X, State.Misc.JumpPower, vel.Z)
-        end
-    else
-        pcall(function()
-            hum:ChangeState(Enum.HumanoidStateType.Freefall)
-        end)
-        local vel = hrp.AssemblyLinearVelocity
-        if vel.Y < 1 then
-            hrp.AssemblyLinearVelocity = Vector3.new(vel.X, 1, vel.Z)
         end
     end
 
-    if moveDir.Magnitude > 0.05 then
-        local targetSpeed = math.min(State.Misc.BhopSpeed, 30)
+    local moveDir = GetMoveDirection()
+    if moveDir.Magnitude > 0 then
+        local targetSpeed = math.clamp(State.Misc.BhopSpeed, 5, 30)
+        local dir = moveDir * targetSpeed
         local vel = hrp.AssemblyLinearVelocity
-        local targetVel = moveDir * targetSpeed
-        local blend = grounded and 0.6 or 0.4
-        local nx = vel.X + (targetVel.X - vel.X) * blend
-        local nz = vel.Z + (targetVel.Z - vel.Z) * blend
-        local flat = math.sqrt(nx * nx + nz * nz)
-        if flat <= targetSpeed + 6 then
-            hrp.AssemblyLinearVelocity = Vector3.new(nx, vel.Y, nz)
+        local nx = vel.X + (dir.X - vel.X) * 0.2
+        local nz = vel.Z + (dir.Z - vel.Z) * 0.2
+        hrp.AssemblyLinearVelocity = Vector3.new(nx, vel.Y, nz)
+    end
+
+    if State.Misc.BhopStrafe then
+        local grounded = false
+        pcall(function()
+            BhopRayParams.FilterDescendantsInstances = {myChar}
+            grounded = Workspace:Raycast(hrp.Position, Vector3.new(0, -4, 0), BhopRayParams) ~= nil
+        end)
+        if not grounded then
+            local vel = hrp.AssemblyLinearVelocity
+            local flat = Vector3.new(vel.X, 0, vel.Z)
+            local speed = flat.Magnitude
+            if speed > 0.6 then
+                local wish = nil
+                local md = GetMoveDirection()
+                if md.Magnitude > 0.1 then
+                    wish = Vector3.new(md.X, 0, md.Z).Unit
+                else
+                    wish = flat.Unit
+                end
+                local curYaw = math.atan2(flat.X, flat.Z)
+                local wishYaw = math.atan2(wish.X, wish.Z)
+                local delta = wishYaw - curYaw
+                delta = (delta + math.pi) % (2 * math.pi) - math.pi
+                local maxStep = math.rad(math.clamp(State.Misc.BhopStrafeRate, 1, 60))
+                if delta > maxStep then
+                    delta = maxStep
+                elseif delta < -maxStep then
+                    delta = -maxStep
+                end
+                local newYaw = curYaw + delta
+                hrp.AssemblyLinearVelocity = Vector3.new(math.sin(newYaw) * speed, vel.Y, math.cos(newYaw) * speed)
+            end
         end
     end
 end
@@ -3330,7 +4177,7 @@ RunService.Heartbeat:Connect(function()
         MoveDebugText = "state: " .. st
             .. " | ground: " .. tostring(g)
             .. " | pitch: " .. tostring(math.floor(pitchVal + 0.5))
-            .. " | mode: " .. tostring(State.AntiAim.PitchMode)
+            .. " | mode: " .. tostring(State.AntiAim.Mode) .. "/" .. tostring(GetAntiAimModeDef().Pitch)
             .. " | ws: " .. tostring(math.floor(hum.WalkSpeed + 0.5))
     end)
 end)
@@ -3567,12 +4414,30 @@ RunService.RenderStepped:Connect(function(dt)
             esp.Box.Visible = false
             esp.Name.Visible = false
             esp.Highlight.Enabled = false
+            esp.Arrow.Visible = false
             for _, l in ipairs(esp.BoneLines) do
                 l.Visible = false
             end
         else
+            local plrColor = GetPlayerColor(char)
             esp.Highlight.Adornee = char
             esp.Highlight.Enabled = State.ESP.Chams
+            esp.Highlight.FillColor = State.ESP.ChamsColor
+            esp.Highlight.OutlineColor = plrColor
+            esp.Box.BackgroundColor3 = plrColor
+            esp.BoxStroke.Color = plrColor
+            esp.Name.TextColor3 = plrColor
+            for _, l in ipairs(esp.BoneLines) do
+                l.BackgroundColor3 = plrColor
+            end
+            local arrowColor = State.ESP.ArrowColor
+            local arrowCount = #esp.ArrowParts
+            for ai = 1, arrowCount do
+                local at = (ai - 1) / math.max(1, arrowCount - 1)
+                local ag = 0.58 + 0.42 * at
+                esp.ArrowParts[ai].BackgroundColor3 = Color3.new(arrowColor.R * ag, arrowColor.G * ag, arrowColor.B * ag)
+                esp.ArrowParts[ai].BackgroundTransparency = 0.08 + 0.87 * at
+            end
 
             local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
             local head = char:FindFirstChild("Head")
@@ -3648,8 +4513,47 @@ RunService.RenderStepped:Connect(function(dt)
                     l.Visible = false
                 end
             end
+
+            if State.ESP.Arrows and Camera then
+                local arrowTarget = char:FindFirstChild("HumanoidRootPart")
+                    or char:FindFirstChild("Torso")
+                    or char:FindFirstChild("UpperTorso")
+                local arrowShow = false
+                if arrowTarget then
+                    local sp, onScr = Camera:WorldToViewportPoint(arrowTarget.Position)
+                    if (not onScr) or sp.Z <= 0 then
+                        arrowShow = true
+                    end
+                end
+                if arrowShow then
+                    local rel = arrowTarget.Position - Camera.CFrame.Position
+                    local lp = Camera.CFrame:VectorToObjectSpace(rel)
+                    local dx = lp.X
+                    local dy = -lp.Y
+                    local len = math.sqrt(dx * dx + dy * dy)
+                    if len < 0.001 then
+                        len = 0.001
+                    end
+                    local nx = dx / len
+                    local ny = dy / len
+                    local vp = Camera.ViewportSize
+                    local radius = math.min(vp.X, vp.Y) * 0.5 - 48
+                    if radius < 44 then
+                        radius = 44
+                    end
+                    esp.Arrow.Position = UDim2.new(0, vp.X * 0.5 + nx * radius, 0, vp.Y * 0.5 + ny * radius)
+                    esp.Arrow.Rotation = math.deg(math.atan2(ny, nx)) + 90
+                    esp.Arrow.Visible = true
+                else
+                    esp.Arrow.Visible = false
+                end
+            else
+                esp.Arrow.Visible = false
+            end
         end
     end
+
+    pcall(UpdateCharmPlayers)
 
     for char, _ in pairs(ESPObjects) do
         if not activeChars[char] then
