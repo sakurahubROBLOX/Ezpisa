@@ -109,7 +109,6 @@ local State = {
         TeamCheck = true,
         WallCheck = true,
         ShootWall = false,
-        AutoWall = false,
         ShootWallLimit = 16,
         Hitbox = "Head",
         FireDelay = 0.04
@@ -121,7 +120,6 @@ local State = {
         TeamCheck = true,
         WallCheck = true,
         ShootWall = false,
-        AutoWall = false,
         ShootWallLimit = 16,
         Hitbox = "Head"
     },
@@ -163,8 +161,6 @@ local State = {
     Misc = {
         BunnyHop = false,
         BhopSpeed = 18,
-        BhopStrafe = false,
-        BhopStrafeRate = 14,
         JumpPower = 58,
         SpeedHack = false,
         SpeedValue = 34,
@@ -176,14 +172,6 @@ local State = {
         AntiFlash = false,
         AntiSmoke = false,
         AirStuck = false,
-        FogEnabled = false,
-        FogStart = 20,
-        FogEnd = 420,
-        FogColor = Color3.fromRGB(196, 206, 218),
-        SkyEnabled = false,
-        Skybox = "Default",
-        SkyColor = Color3.fromRGB(255, 255, 255),
-        SkyBrightness = 1.5,
         ModelChanger = false,
         ModelTarget = "Reset"
     },
@@ -196,233 +184,6 @@ local State = {
         LimitReached = false
     }
 }
-
-local World = (function()
-    local Packs = {
-        Default = {
-            "rbxasset://textures/sky/sky512_bk.tex",
-            "rbxasset://textures/sky/sky512_dn.tex",
-            "rbxasset://textures/sky/sky512_ft.tex",
-            "rbxasset://textures/sky/sky512_lf.tex",
-            "rbxasset://textures/sky/sky512_rt.tex",
-            "rbxasset://textures/sky/sky512_up.tex"
-        },
-        Storm = {
-            "rbxassetid://10258337305",
-            "rbxassetid://10258337305",
-            "rbxassetid://10258337305",
-            "rbxassetid://10258337305",
-            "rbxassetid://10258337305",
-            "rbxassetid://10258337305"
-        },
-        Flat = {
-            "rbxassetid://10799413050",
-            "rbxassetid://10799413050",
-            "rbxassetid://10799413050",
-            "rbxassetid://10799413050",
-            "rbxassetid://10799413050",
-            "rbxassetid://10799413050"
-        },
-        Azure = {
-            "rbxassetid://225469345",
-            "rbxassetid://225469349",
-            "rbxassetid://225469359",
-            "rbxassetid://225469364",
-            "rbxassetid://225469372",
-            "rbxassetid://225469380"
-        },
-        Void = {"", "", "", "", "", ""}
-    }
-
-    local Names = {"Default", "Storm", "Flat", "Azure", "Void"}
-    local Faces = {"SkyboxBk", "SkyboxDn", "SkyboxFt", "SkyboxLf", "SkyboxRt", "SkyboxUp"}
-
-    local OrigFog = nil
-    local OrigLighting = nil
-    local OrigSky = nil
-
-    local function SaveFogOrig()
-        if OrigFog then
-            return
-        end
-        pcall(function()
-            OrigFog = {
-                Start = Lighting.FogStart,
-                End = Lighting.FogEnd,
-                Color = Lighting.FogColor
-            }
-        end)
-    end
-
-    local function SaveLightingOrig()
-        if OrigLighting then
-            return
-        end
-        pcall(function()
-            OrigLighting = {
-                Ambient = Lighting.Ambient,
-                OutdoorAmbient = Lighting.OutdoorAmbient,
-                Brightness = Lighting.Brightness,
-                ColorShiftTop = Lighting.ColorShift_Top,
-                ColorShiftBottom = Lighting.ColorShift_Bottom,
-                GlobalShadows = Lighting.GlobalShadows
-            }
-        end)
-    end
-
-    local function SaveSkyOrig()
-        if OrigSky then
-            return
-        end
-        local sky = Lighting:FindFirstChildOfClass("Sky")
-        if not sky then
-            OrigSky = {}
-            return
-        end
-        local saved = {}
-        for _, face in ipairs(Faces) do
-            pcall(function()
-                saved[face] = sky[face]
-            end)
-        end
-        OrigSky = saved
-    end
-
-    local function RestoreLighting()
-        if not Lighting or not OrigLighting then
-            return
-        end
-        pcall(function()
-            Lighting.Ambient = OrigLighting.Ambient
-            Lighting.OutdoorAmbient = OrigLighting.OutdoorAmbient
-            Lighting.Brightness = OrigLighting.Brightness
-            Lighting.ColorShift_Top = OrigLighting.ColorShiftTop
-            Lighting.ColorShift_Bottom = OrigLighting.ColorShiftBottom
-            Lighting.GlobalShadows = OrigLighting.GlobalShadows
-        end)
-    end
-
-    local function GetSkyObject()
-        local sky = Lighting:FindFirstChildOfClass("Sky")
-        if not sky then
-            sky = Instance.new("Sky")
-            sky.Parent = Lighting
-        end
-        return sky
-    end
-
-    local function ApplyFog()
-        if not Lighting then
-            return
-        end
-        SaveFogOrig()
-        pcall(function()
-            if State.Misc.FogEnabled then
-                Lighting.FogStart = State.Misc.FogStart
-                Lighting.FogEnd = State.Misc.FogEnd
-                Lighting.FogColor = State.Misc.FogColor
-            elseif OrigFog then
-                Lighting.FogStart = OrigFog.Start
-                Lighting.FogEnd = OrigFog.End
-                Lighting.FogColor = OrigFog.Color
-            end
-        end)
-    end
-
-    local function ApplySky()
-        if not Lighting then
-            return
-        end
-        SaveLightingOrig()
-        SaveSkyOrig()
-
-        if not State.Misc.SkyEnabled then
-            RestoreLighting()
-            pcall(function()
-                local sky = Lighting:FindFirstChildOfClass("Sky")
-                if sky and OrigSky then
-                    for _, face in ipairs(Faces) do
-                        if OrigSky[face] ~= nil then
-                            sky[face] = OrigSky[face]
-                        end
-                    end
-                    sky.Parent = Lighting
-                end
-            end)
-            return
-        end
-
-        local sky = GetSkyObject()
-        local pack = Packs[State.Misc.Skybox] or Packs.Default
-        for i, face in ipairs(Faces) do
-            pcall(function()
-                sky[face] = pack[i]
-            end)
-        end
-        pcall(function()
-            sky.CelestialBodiesShown = (State.Misc.Skybox == "Default")
-        end)
-
-        local col = State.Misc.SkyColor
-        SaveLightingOrig()
-        pcall(function()
-            Lighting.Ambient = col
-            Lighting.OutdoorAmbient = col
-            Lighting.ColorShift_Top = col
-            Lighting.ColorShift_Bottom = col
-            Lighting.Brightness = State.Misc.SkyBrightness
-        end)
-
-        local atmo = Lighting:FindFirstChildOfClass("Atmosphere")
-        if not atmo then
-            atmo = Instance.new("Atmosphere")
-            atmo.Parent = Lighting
-        end
-        pcall(function()
-            atmo.Color = col
-            atmo.Decay = col
-            atmo.Density = 0.42
-            atmo.Glare = 0
-            atmo.Haze = 2.4
-            atmo.Offset = 0
-            atmo.Height = 200
-        end)
-
-        pcall(function()
-            local holder = sky.Parent
-            sky.Parent = nil
-            sky.Parent = holder or Lighting
-        end)
-    end
-
-    local function Reset()
-        State.Misc.FogEnabled = false
-        State.Misc.SkyEnabled = false
-        ApplyFog()
-        ApplySky()
-    end
-
-    task.spawn(function()
-        while true do
-            task.wait(1)
-            if State.Misc.FogEnabled then
-                pcall(ApplyFog)
-            end
-            if State.Misc.SkyEnabled then
-                pcall(ApplySky)
-            end
-        end
-    end)
-
-    return {
-        Names = Names,
-        Packs = Packs,
-        Faces = Faces,
-        ApplyFog = ApplyFog,
-        ApplySky = ApplySky,
-        Reset = Reset
-    }
-end)()
 
 pcall(function()
     RunService:UnbindFromRenderStep("SakuraAntiAimStep")
@@ -530,7 +291,7 @@ PushKillFeedIfDead = function(charModel, throughWall)
         pcall(function()
             if hum and hum.Parent and startHealth > 0 and hum.Health <= 0 then
                 if throughWall then
-                    PushKillFeed(charModel.Name .. "   [WALLBANG]", Color3.fromRGB(255, 190, 60))
+                    PushKillFeed(charModel.Name .. "   [THROUGH WALL]", Color3.fromRGB(180, 230, 30))
                 else
                     PushKillFeed(charModel.Name .. "   [KILLED]", Color3.fromRGB(255, 105, 180))
                 end
@@ -1234,16 +995,13 @@ AddSectionTitle(TabRage.Right, "RAGEBOT SETTINGS", Icons.Target, 1)
 AddSelector(TabRage.Right, "Target Hitbox", {"Head", "UpperTorso", "HumanoidRootPart"}, State.Ragebot.Hitbox, 2, function(v)
     State.Ragebot.Hitbox = v
 end)
-AddToggle(TabRage.Right, "Auto Wall", State.Ragebot.AutoWall, 3, function(v)
-    State.Ragebot.AutoWall = v
-end)
-AddToggle(TabRage.Right, "Shoot Wall", State.Ragebot.ShootWall, 4, function(v)
+AddToggle(TabRage.Right, "Shoot Wall", State.Ragebot.ShootWall, 3, function(v)
     State.Ragebot.ShootWall = v
 end)
-AddSlider(TabRage.Right, "Shoot Wall Thickness", 2, 100, State.Ragebot.ShootWallLimit, 0, 5, function(v)
+AddSlider(TabRage.Right, "Shoot Wall Thickness", 2, 100, State.Ragebot.ShootWallLimit, 0, 4, function(v)
     State.Ragebot.ShootWallLimit = v
 end)
-AddSlider(TabRage.Right, "Fire Delay", 0.01, 0.25, State.Ragebot.FireDelay, 2, 6, function(v)
+AddSlider(TabRage.Right, "Fire Delay", 0.01, 0.25, State.Ragebot.FireDelay, 2, 5, function(v)
     State.Ragebot.FireDelay = v
 end)
 
@@ -1268,13 +1026,10 @@ end)
 AddSelector(TabSilent.Right, "Silent Hitbox", {"Head", "UpperTorso", "HumanoidRootPart"}, State.SilentAim.Hitbox, 4, function(v)
     State.SilentAim.Hitbox = v
 end)
-AddToggle(TabSilent.Right, "Auto Wall", State.SilentAim.AutoWall, 5, function(v)
-    State.SilentAim.AutoWall = v
-end)
-AddToggle(TabSilent.Right, "Shoot Wall", State.SilentAim.ShootWall, 6, function(v)
+AddToggle(TabSilent.Right, "Shoot Wall", State.SilentAim.ShootWall, 5, function(v)
     State.SilentAim.ShootWall = v
 end)
-AddSlider(TabSilent.Right, "Shoot Wall Thickness", 2, 100, State.SilentAim.ShootWallLimit, 0, 7, function(v)
+AddSlider(TabSilent.Right, "Shoot Wall Thickness", 2, 100, State.SilentAim.ShootWallLimit, 0, 6, function(v)
     State.SilentAim.ShootWallLimit = v
 end)
 
@@ -1628,13 +1383,7 @@ end)
 AddSlider(TabMisc.Left, "Bhop Speed", 5, 30, State.Misc.BhopSpeed, 0, 3, function(v)
     State.Misc.BhopSpeed = v
 end)
-AddToggle(TabMisc.Left, "Auto Strafe", State.Misc.BhopStrafe, 4, function(v)
-    State.Misc.BhopStrafe = v
-end)
-AddSlider(TabMisc.Left, "Strafe Rate", 1, 60, State.Misc.BhopStrafeRate, 0, 5, function(v)
-    State.Misc.BhopStrafeRate = v
-end)
-AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 7, function(v)
+AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 6, function(v)
     State.Misc.SpeedHack = v
     if not v then
         pcall(function()
@@ -1646,20 +1395,20 @@ AddToggle(TabMisc.Left, "Speed Hack", State.Misc.SpeedHack, 7, function(v)
         end)
     end
 end)
-AddSlider(TabMisc.Left, "Speed Value", 16, 120, State.Misc.SpeedValue, 0, 8, function(v)
+AddSlider(TabMisc.Left, "Speed Value", 16, 120, State.Misc.SpeedValue, 0, 7, function(v)
     State.Misc.SpeedValue = v
 end)
-AddToggle(TabMisc.Left, "Instant Accel", State.Misc.SpeedInstant, 9, function(v)
+AddToggle(TabMisc.Left, "Instant Accel", State.Misc.SpeedInstant, 8, function(v)
     State.Misc.SpeedInstant = v
 end)
-AddToggle(TabMisc.Left, "Speed Bypass (Hide WS)", State.Misc.SpeedBypass, 10, function(v)
+AddToggle(TabMisc.Left, "Speed Bypass (Hide WS)", State.Misc.SpeedBypass, 9, function(v)
     State.Misc.SpeedBypass = v
     if v then
         InstallWalkSpeedBypass()
     end
 end)
-AddInfoLabel(TabMisc.Left, "off by default: metatable hook", 11)
-AddSlider(TabMisc.Left, "Jump Power", 30, 130, State.Misc.JumpPower, 0, 12, function(v)
+AddInfoLabel(TabMisc.Left, "off by default: metatable hook", 10)
+AddSlider(TabMisc.Left, "Jump Power", 30, 130, State.Misc.JumpPower, 0, 10, function(v)
     State.Misc.JumpPower = v
 end)
 AddSectionTitle(TabMisc.Left, "AIR STUCK", Icons.Sparkles, 1)
@@ -1747,45 +1496,6 @@ AddSlider(TabMisc.Right, "Third Person Dist", 5, 40, State.Misc.ThirdPersonDist,
     if State.Misc.ThirdPerson and ApplyThirdPerson then
         ApplyThirdPerson()
     end
-end)
-
-AddSectionTitle(TabMisc.Right, "FOG", Icons.Volume, 6)
-AddToggle(TabMisc.Right, "Fog", State.Misc.FogEnabled, 7, function(v)
-    State.Misc.FogEnabled = v
-    World.ApplyFog()
-end)
-AddSlider(TabMisc.Right, "Fog Start", 0, 2000, State.Misc.FogStart, 0, 8, function(v)
-    State.Misc.FogStart = v
-    World.ApplyFog()
-end)
-AddSlider(TabMisc.Right, "Fog End", 0, 5000, State.Misc.FogEnd, 0, 9, function(v)
-    State.Misc.FogEnd = v
-    World.ApplyFog()
-end)
-AddSelector(TabMisc.Right, "Fog Color", ESPColorNames, "White", 10, function(v)
-    State.Misc.FogColor = ESPColorMap[v] or ESPColorMap.White
-    World.ApplyFog()
-end)
-
-AddSectionTitle(TabMisc.Right, "CHANGE SKY", Icons.Palette, 11)
-AddToggle(TabMisc.Right, "Change Sky", State.Misc.SkyEnabled, 12, function(v)
-    State.Misc.SkyEnabled = v
-    World.ApplySky()
-end)
-AddSelector(TabMisc.Right, "Skybox", World.Names, State.Misc.Skybox, 13, function(v)
-    State.Misc.Skybox = v
-    World.ApplySky()
-end)
-AddSelector(TabMisc.Right, "Sky Color", ESPColorNames, "White", 14, function(v)
-    State.Misc.SkyColor = ESPColorMap[v] or ESPColorMap.White
-    World.ApplySky()
-end)
-AddSlider(TabMisc.Right, "Sky Brightness", 0, 5, State.Misc.SkyBrightness, 2, 15, function(v)
-    State.Misc.SkyBrightness = v
-    World.ApplySky()
-end)
-AddButton(TabMisc.Right, "RESET SKY AND FOG", 16, function()
-    World.Reset()
 end)
 
 local KillTargetInfoLabel = nil
@@ -2940,9 +2650,6 @@ end
 
 local function PassesWallCheck(cfg, targetPart, charModel, cacheKey)
     local function compute()
-        if cfg.AutoWall then
-            return GetWallThickness(targetPart, charModel) <= cfg.ShootWallLimit
-        end
         if cfg.ShootWall then
             return GetWallThickness(targetPart, charModel) <= cfg.ShootWallLimit
         end
@@ -3007,7 +2714,7 @@ local function UpdateTargets()
                         local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
                         if onScreen and screenPos.Z > 0 then
                             local dist2D = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-                            if dist2D <= bestSilentDist or State.SilentAim.AutoWall then
+                            if dist2D <= bestSilentDist then
                                 local passWall = PassesWallCheck(State.SilentAim, part, char, "silent_" .. char.Name)
                                 if passWall then
                                     bestSilentDist = dist2D
@@ -3862,40 +3569,6 @@ local function ApplyBunnyHop()
         local nx = vel.X + (dir.X - vel.X) * 0.2
         local nz = vel.Z + (dir.Z - vel.Z) * 0.2
         hrp.AssemblyLinearVelocity = Vector3.new(nx, vel.Y, nz)
-    end
-
-    if State.Misc.BhopStrafe then
-        local grounded = false
-        pcall(function()
-            BhopRayParams.FilterDescendantsInstances = {myChar}
-            grounded = Workspace:Raycast(hrp.Position, Vector3.new(0, -4, 0), BhopRayParams) ~= nil
-        end)
-        if not grounded then
-            local vel = hrp.AssemblyLinearVelocity
-            local flat = Vector3.new(vel.X, 0, vel.Z)
-            local speed = flat.Magnitude
-            if speed > 0.6 then
-                local wish = nil
-                local md = GetMoveDirection()
-                if md.Magnitude > 0.1 then
-                    wish = Vector3.new(md.X, 0, md.Z).Unit
-                else
-                    wish = flat.Unit
-                end
-                local curYaw = math.atan2(flat.X, flat.Z)
-                local wishYaw = math.atan2(wish.X, wish.Z)
-                local delta = wishYaw - curYaw
-                delta = (delta + math.pi) % (2 * math.pi) - math.pi
-                local maxStep = math.rad(math.clamp(State.Misc.BhopStrafeRate, 1, 60))
-                if delta > maxStep then
-                    delta = maxStep
-                elseif delta < -maxStep then
-                    delta = -maxStep
-                end
-                local newYaw = curYaw + delta
-                hrp.AssemblyLinearVelocity = Vector3.new(math.sin(newYaw) * speed, vel.Y, math.cos(newYaw) * speed)
-            end
-        end
     end
 end
 
